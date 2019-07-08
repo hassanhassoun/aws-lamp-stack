@@ -2,15 +2,22 @@ provider "aws" {
   region = "${var.aws_region}"
 }
 
-resource "aws_route_table" "lamp_route" {
-  vpc_id     = "${aws_vpc.lamp.id}"
-}
-
 resource "aws_internet_gateway" "lamp_igw" {
   tags = {
     "Name" = "lamp-gateway"
   }
   vpc_id   = "${aws_vpc.lamp.id}"
+}
+
+resource "aws_default_route_table" "default" {
+  default_route_table_id = "${aws_vpc.lamp.default_route_table_id}"
+  route {
+    gateway_id = "${aws_internet_gateway.lamp_igw.id}"
+    cidr_block = "0.0.0.0/0"
+  }
+  tags = {
+    Name = "default route table"
+  }
 }
 
 resource "aws_vpc" "lamp" {
@@ -57,7 +64,13 @@ resource "aws_subnet" "beanstalk-ec2-b" {
   }
 }
 
-resource "aws_elastic_beanstalk_environment" "lamp_env" {
+resource "aws_iam_instance_profile" "eb-ec2-profile" {
+  name        = "aws-elasticbeanstalk-ec2-role"
+  path        = "/"
+  role        = "aws-elasticbeanstalk-ec2-role"
+}
+
+resource "aws_elastic_beanstalk_environment" "lamp-stack" {
       setting {
           name      = "AssociatePublicIpAddress"
           namespace = "aws:ec2:vpc"
@@ -101,6 +114,12 @@ resource "aws_elastic_beanstalk_environment" "lamp_env" {
           value     = ""
             }
       setting {
+          name      = "IamInstanceProfile"
+          namespace = "aws:autoscaling:launchconfiguration"
+          resource  = ""
+          value     = "aws-elasticbeanstalk-ec2-role"
+            }
+      setting {
           name      = "InstanceType"
           namespace = "aws:autoscaling:launchconfiguration"
           resource  = ""
@@ -130,17 +149,17 @@ resource "aws_elastic_beanstalk_environment" "lamp_env" {
           resource  = ""
           value     = "${aws_vpc.lamp.id}"
             }
-  name                  = "Lamp-env"
+  name                  = "lamp-stack"
   application           = "LAMP"
   cname_prefix           = "lampstack"
   solution_stack_name    = "64bit Amazon Linux 2018.03 v2.8.12 running PHP 7.2"
   tags                   = {}
   tier                   = "WebServer"
-  version_label          = "Sample Application"
+  # version_label          = "Sample Application"
   wait_for_ready_timeout = "5m"
 }
 
-resource "aws_elastic_beanstalk_application" "lampstack" {
+resource "aws_elastic_beanstalk_application" "lampstack-app" {
   name = "LAMP"
   tags = {}
 }
@@ -182,7 +201,7 @@ resource "aws_db_instance" "mysqldb" {
   }
   username                              = "master"
   vpc_security_group_ids                = [
-      "${aws_security_group.rds_sg.id}",
+      "${aws_security_group.rds-sg.id}",
   ]
   timeouts {}
 }
@@ -197,7 +216,7 @@ resource "aws_db_subnet_group" "rds" {
   tags        = {}
 }
 
-resource "aws_security_group" "rds_sg" {
+resource "aws_security_group" "rds-sg" {
   description            = "Created from the RDS Management Console: 2019/07/06 11:18:22"
   name                   = "rds-launch-wizard-1"
   revoke_rules_on_delete = false
@@ -206,7 +225,7 @@ resource "aws_security_group" "rds_sg" {
   timeouts {}
 }
 
-resource "aws_security_group_rule" "rds_sg_ingress" {
+resource "aws_security_group_rule" "rds-sg-ingress" {
   cidr_blocks       = [
     "99.245.206.50/32",
   ]
@@ -214,13 +233,13 @@ resource "aws_security_group_rule" "rds_sg_ingress" {
   ipv6_cidr_blocks  = []
   prefix_list_ids   = []
   protocol          = "tcp"
-  security_group_id = "${aws_security_group.rds_sg.id}"
+  security_group_id = "${aws_security_group.rds-sg.id}"
   self              = false
   to_port           = 3306
   type              = "ingress"
 }
 
-resource "aws_security_group_rule" "rds_sg_egress" {
+resource "aws_security_group_rule" "rds-sg-egress" {
   cidr_blocks       = [
     "0.0.0.0/0",
   ]
@@ -228,7 +247,7 @@ resource "aws_security_group_rule" "rds_sg_egress" {
   ipv6_cidr_blocks  = []
   prefix_list_ids   = []
   protocol          = "-1"
-  security_group_id = "${aws_security_group.rds_sg.id}"
+  security_group_id = "${aws_security_group.rds-sg.id}"
   self              = false
   to_port           = 0
   type              = "egress"
