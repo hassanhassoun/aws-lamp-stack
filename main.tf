@@ -200,6 +200,7 @@ resource "aws_db_instance" "mysqldb" {
       "workload-type" = "other"
   }
   username                              = "master"
+  password                              = "${var.db_password}"
   vpc_security_group_ids                = [
       "${aws_security_group.rds-sg.id}",
   ]
